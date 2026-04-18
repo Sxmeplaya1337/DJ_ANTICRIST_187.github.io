@@ -1,0 +1,750 @@
+
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const translations = {
+  en: {
+    clickToEnter: "CLICK TO ENTER",
+    subtitle: "OFFICIAL WEBSITE ARTIST",
+    aboutBtn: "About Me",
+    aboutTitle: "About Me",
+    bio1: "This is the official website of DJ_ANTICRIST_187 — producer of dirty and raw sound!",
+    bio2: "Here dark creatures perish, keepers of tombs, and the king of necromancers prepares for the attack. The sound evokes in many a terrifying atmosphere of a graveyard, dark forces, and fear of the unclean!",
+    bio3: "Prepare for battle and do not perish in the fight! Good luck, wanderer!",
+    bio4: "Member of the NECROHILL SQUAD collective, where I and my colleagues forge this dirty and raw sound — as if forged deep within caves!",
+    backBtn: "Back",
+    footer: "DJ_ANTICRIST_187 / NECROHILL SQUAD / ALL RIGHTS RESERVED",
+    present: "PRESENTS",
+  },
+  ru: {
+    clickToEnter: "НАЖМИТЕ ДЛЯ ВХОДА",
+    subtitle: "OFFICIAL WEBSITE ARTIST",
+    aboutBtn: "Обо мне",
+    aboutTitle: "Обо мне",
+    bio1: "Это официальный сайт с информацией о DJ_ANTICRIST_187, продюсера грязного и сырого звука!",
+    bio2: "Здесь погибают тёмные существа, хранители гробниц и готовится к атаке царь некромантов. Звучание у многих вызывает жуткую атмосферу кладбища, тёмных сил и страх у нечисти!",
+    bio3: "Готовься к бою и не погибни в сражении! Удачи, путник!",
+    bio4: "Участник объединения NECROHILL SQUAD, где я со своими коллегами создаём данный грязный и сырой звук как в пещерах!",
+    backBtn: "Назад",
+    footer: "DJ_ANTICRIST_187 / NECROHILL SQUAD / ВСЕ ПРАВА ЗАЩИЩЕНЫ",
+    present: "ПРЕДСТАВЛЯЕТ",
+  },
+};
+
+type Lang = "en" | "ru";
+
+function useVHSAudio() {
+  const ctxRef = useRef<AudioContext | null>(null);
+  const hissNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const init = useCallback(() => {
+    if (ctxRef.current) return ctxRef.current;
+    const ctx = new AudioContext();
+    ctxRef.current = ctx;
+    return ctx;
+  }, []);
+
+  const playInsertSound = useCallback(() => {
+    const ctx = init();
+    const now = ctx.currentTime;
+    const duration = 1.8;
+    const bufferSize = ctx.sampleRate * duration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const t = i / ctx.sampleRate;
+      let sample = (Math.random() * 2 - 1) * 0.4;
+      if (t < 0.08) sample += Math.sin(t * 200) * (1 - t / 0.08) * 0.6;
+      if (t > 0.12 && t < 0.22) sample += Math.sin(t * 80) * 0.3;
+      if (t > 0.25 && t < 0.4) sample += (Math.random() * 2 - 1) * 0.5;
+      const env = t < 0.05 ? t / 0.05 : t > 1.5 ? (1.8 - t) / 0.3 : 1;
+      data[i] = sample * env * 0.7;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 1200;
+    filter.Q.value = 0.5;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.5, now);
+    gain.gain.linearRampToValueAtTime(0.0, now + duration);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + duration);
+  }, [init]);
+
+  const startHiss = useCallback(() => {
+    const ctx = init();
+    if (hissNodeRef.current) return;
+    const bufferSize = ctx.sampleRate * 4;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.3;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = "highshelf";
+    filter.frequency.value = 3000;
+    filter.gain.value = -8;
+    const filter2 = ctx.createBiquadFilter();
+    filter2.type = "peaking";
+    filter2.frequency.value = 800;
+    filter2.gain.value = -4;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.04, ctx.currentTime + 2);
+    src.connect(filter);
+    filter.connect(filter2);
+    filter2.connect(gain);
+    gain.connect(ctx.destination);
+    src.start();
+    hissNodeRef.current = src;
+  }, [init]);
+
+  return { playInsertSound, startHiss };
+}
+
+function VHSCanvas({ opacity = 1, dense = true, zIndex = 5 }: { opacity?: number; dense?: boolean; zIndex?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+  const frameRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const draw = () => {
+      const w = canvas.width;
+      const h = canvas.height;
+      frameRef.current++;
+      ctx.clearRect(0, 0, w, h);
+
+      if (dense) {
+        const imageData = ctx.createImageData(w, h);
+        const d = imageData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const v = Math.random() * 200 | 0;
+          d[i] = v; d[i + 1] = v; d[i + 2] = v;
+          d[i + 3] = Math.random() > 0.5 ? 255 : 180;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        const numLines = 2 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < numLines; l++) {
+          const y = Math.random() * h;
+          const lineH = 1 + Math.random() * 4;
+          ctx.fillStyle = `rgba(255,255,255,${0.1 + Math.random() * 0.25})`;
+          ctx.fillRect(0, y, w, lineH);
+        }
+        if (Math.random() > 0.85) {
+          const glitchY = Math.random() * h;
+          const glitchH = 2 + Math.random() * 8;
+          ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.4})`;
+          ctx.fillRect(0, glitchY, w * (0.3 + Math.random() * 0.7), glitchH);
+        }
+      } else {
+        const imageData = ctx.createImageData(w, h);
+        const d = imageData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const v = Math.random() * 100 | 0;
+          d[i] = v; d[i + 1] = v; d[i + 2] = v;
+          d[i + 3] = Math.random() > 0.6 ? 70 : 25;
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        const numLines = 1 + Math.floor(Math.random() * 3);
+        for (let l = 0; l < numLines; l++) {
+          const y = Math.random() * h;
+          const lh = 1 + Math.random() * 3;
+          ctx.fillStyle = `rgba(255,255,255,${0.06 + Math.random() * 0.12})`;
+          ctx.fillRect(0, y, w, lh);
+        }
+
+        if (Math.random() > 0.7) {
+          const numGlitch = 1 + Math.floor(Math.random() * 3);
+          for (let g = 0; g < numGlitch; g++) {
+            const gy = Math.random() * h;
+            const gh = 1 + Math.random() * 5;
+            const gx = (Math.random() - 0.5) * 60;
+            const gw = w * (0.2 + Math.random() * 0.5);
+            ctx.fillStyle = `rgba(255,255,255,${0.04 + Math.random() * 0.09})`;
+            ctx.fillRect(gx, gy, gw, gh);
+          }
+        }
+
+        if (frameRef.current % 6 === 0 && Math.random() > 0.5) {
+          const bandY = Math.random() * h;
+          const bandH = 4 + Math.random() * 20;
+          const shift = (Math.random() - 0.5) * 30;
+          ctx.save();
+          ctx.globalCompositeOperation = "source-over";
+          const slice = ctx.getImageData(0, bandY, w, bandH);
+          ctx.clearRect(0, bandY, w, bandH);
+          ctx.putImageData(slice, shift, bandY);
+          ctx.restore();
+        }
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      window.removeEventListener("resize", resize);
+    };
+  }, [dense]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: "fixed",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        pointerEvents: "none",
+        zIndex,
+        opacity,
+        mixBlendMode: "screen",
+      }}
+    />
+  );
+}
+
+function VHSEffectOverlay() {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundImage: `url(${BASE}/vhs_effect.jpg)`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        pointerEvents: "none",
+        zIndex: 95,
+        mixBlendMode: "screen",
+        animation: "vhsEffectFlicker 0.08s steps(1) infinite",
+      }}
+    />
+  );
+}
+
+function VHSIntro({ onDone, lang }: { onDone: () => void; lang: Lang }) {
+  const [phase, setPhase] = useState<"static" | "logo" | "fading">("static");
+  const t = translations[lang];
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase("logo"), 400);
+    const t2 = setTimeout(() => setPhase("fading"), 3000);
+    const t3 = setTimeout(() => onDone(), 3800);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [onDone]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000",
+        zIndex: 200,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        opacity: phase === "fading" ? 0 : 1,
+        transition: phase === "fading" ? "opacity 0.8s ease" : "none",
+      }}
+    >
+      <VHSCanvas opacity={1} dense={true} zIndex={210} />
+      <div className="tracking-line" style={{ top: "-10%", zIndex: 215 }} />
+
+      {phase === "logo" && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 220,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "20px",
+            animation: "pageIn 0.5s ease forwards",
+          }}
+        >
+          <img
+            src={`${BASE}/logo_nobg.png`}
+            alt="DJ Anticrist 187"
+            style={{
+              width: "clamp(180px, 30vw, 320px)",
+              height: "clamp(180px, 30vw, 320px)",
+              objectFit: "contain",
+              filter: "brightness(10)",
+              opacity: 1,
+            }}
+          />
+          <div
+            style={{
+              fontFamily: "'Cinzel', serif",
+              fontSize: "clamp(0.85rem, 2vw, 1.2rem)",
+              letterSpacing: ".7em",
+              color: "rgba(255,255,255,1)",
+              textShadow: "0 0 12px rgba(255,255,255,.8), 0 0 28px rgba(255,255,255,.4)",
+            }}
+          >
+            {t.present}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <img
+      src={`${BASE}/logo_nobg.png`}
+      alt="DJ Anticrist 187 Logo"
+      style={{
+        position: "fixed",
+        top: "10px",
+        right: "12px",
+        width: "clamp(64px, 7vw, 90px)",
+        height: "clamp(64px, 7vw, 90px)",
+        objectFit: "contain",
+        opacity: 0.72,
+        zIndex: 50,
+        pointerEvents: "none",
+        filter: "brightness(10)",
+      }}
+    />
+  );
+}
+
+function PlayBlinker() {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const id = setInterval(() => setVisible((v) => !v), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: "16px",
+        left: "22px",
+        zIndex: 55,
+        fontFamily: "'Cinzel', serif",
+        fontSize: "clamp(0.85rem, 1.5vw, 1.1rem)",
+        letterSpacing: ".35em",
+        color: "rgba(255,255,255,.85)",
+        textShadow: "0 0 8px rgba(255,255,255,.6), 0 0 18px rgba(180,180,255,.4)",
+        opacity: visible ? 1 : 0,
+        transition: "opacity 0.1s ease",
+        pointerEvents: "none",
+      }}
+    >
+      ▶ PLAY
+    </div>
+  );
+}
+
+function TranslateButton({ lang, onToggle }: { lang: Lang; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="btn-glow"
+      style={{
+        position: "fixed",
+        bottom: "18px",
+        left: "22px",
+        padding: "6px 18px",
+        background: "rgba(0,0,0,.65)",
+        border: "1px solid rgba(255,255,255,.35)",
+        color: "#fff",
+        fontFamily: "'Cinzel', serif",
+        letterSpacing: ".2em",
+        cursor: "pointer",
+        fontSize: "0.75rem",
+        zIndex: 60,
+      }}
+    >
+      {lang === "en" ? "RU" : "EN"}
+    </button>
+  );
+}
+
+function Footer({ lang }: { lang: Lang }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        textAlign: "center",
+        padding: "10px 20px",
+        fontFamily: "'Cinzel', serif",
+        fontSize: "0.58rem",
+        letterSpacing: ".3em",
+        color: "rgba(255,255,255,.3)",
+        zIndex: 50,
+        pointerEvents: "none",
+        background: "linear-gradient(transparent, rgba(0,0,0,.55))",
+      }}
+    >
+      {translations[lang].footer}
+    </div>
+  );
+}
+
+function PageTransition({ children, animKey }: { children: React.ReactNode; animKey: string }) {
+  return (
+    <div key={animKey} className="page-enter" style={{ height: "100%" }}>
+      {children}
+    </div>
+  );
+}
+
+function PageShell({ children, lang }: { children: React.ReactNode; lang: Lang }) {
+  return (
+    <>
+      <VHSEffectOverlay />
+      <VHSCanvas opacity={0.22} dense={false} zIndex={96} />
+      <div className="vignette crt-lines" style={{ position: "fixed", inset: 0, zIndex: 1, pointerEvents: "none" }} />
+      <Footer lang={lang} />
+      {children}
+    </>
+  );
+}
+
+function HomePage({ lang, onNavigate }: { lang: Lang; onNavigate: (path: string) => void }) {
+  const t = translations[lang];
+
+  return (
+    <PageShell lang={lang}>
+      <div
+        style={{
+          height: "100%",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: `
+              radial-gradient(circle at 70% 20%, rgba(255,255,255,.2) 0 5%, transparent 6%),
+              linear-gradient(rgba(0,0,0,.5), rgba(0,0,0,.75)),
+              url('https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1600&q=80') center/cover no-repeat
+            `,
+            filter: "grayscale(1) brightness(0.9) contrast(2.1)",
+            zIndex: 0,
+          }}
+        />
+
+        <div
+          style={{
+            position: "relative",
+            zIndex: 20,
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 0,
+          }}
+        >
+          <div
+            className="glitch-title"
+            style={{
+              fontSize: "clamp(2.8rem, 9vw, 8rem)",
+              letterSpacing: ".12em",
+              color: "#fff",
+              fontFamily: "'UnifrakturMaguntia', serif",
+              fontWeight: 400,
+              textShadow:
+                "0 0 6px rgba(255,255,255,.4), 0 0 18px rgba(180,180,255,.5), 0 0 30px rgba(180,180,255,.3), 3px 3px 0 #000, -2px -2px 0 #000",
+              lineHeight: 1.1,
+            }}
+          >
+            DJ_Anticrist_187
+          </div>
+
+          <div
+            style={{
+              marginTop: "14px",
+              fontSize: "0.85rem",
+              letterSpacing: ".45em",
+              opacity: 0.65,
+              color: "#fff",
+              fontFamily: "'Cinzel', serif",
+            }}
+          >
+            {t.subtitle}
+          </div>
+
+          <button
+            className="btn-glow"
+            onClick={() => onNavigate("/about")}
+            data-testid="button-about"
+            style={{
+              marginTop: "32px",
+              padding: "12px 32px",
+              background: "rgba(0,0,0,.55)",
+              border: "1px solid rgba(255,255,255,.35)",
+              color: "#fff",
+              fontFamily: "'UnifrakturMaguntia', serif",
+              letterSpacing: ".2em",
+              cursor: "pointer",
+              fontSize: "1.1rem",
+            }}
+          >
+            {t.aboutBtn}
+          </button>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+function AboutPage({ lang, onNavigate }: { lang: Lang; onNavigate: (path: string) => void }) {
+  const t = translations[lang];
+
+  return (
+    <PageShell lang={lang}>
+      <div
+        style={{
+          height: "100%",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          position: "relative",
+          paddingTop: "80px",
+          paddingBottom: "70px",
+        }}
+      >
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: `
+              linear-gradient(rgba(0,0,0,.6), rgba(0,0,0,.85)),
+              url('https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1600&q=80') center/cover no-repeat
+            `,
+            filter: "grayscale(1) brightness(0.7) contrast(2.1)",
+            zIndex: 0,
+          }}
+        />
+
+        <div
+          style={{
+            position: "relative",
+            zIndex: 20,
+            textAlign: "center",
+            maxWidth: "640px",
+            width: "90%",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <div
+            className="glitch-title"
+            style={{
+              fontSize: "clamp(2rem, 7vw, 5rem)",
+              letterSpacing: ".12em",
+              color: "#fff",
+              fontFamily: "'UnifrakturMaguntia', serif",
+              fontWeight: 400,
+              textShadow:
+                "0 0 6px rgba(255,255,255,.4), 0 0 18px rgba(180,180,255,.5), 0 0 30px rgba(180,180,255,.3), 3px 3px 0 #000, -2px -2px 0 #000",
+              lineHeight: 1.1,
+              marginBottom: "36px",
+            }}
+          >
+            {t.aboutTitle}
+          </div>
+
+          <div
+            style={{
+              width: "100%",
+              border: "1px solid rgba(255,255,255,.18)",
+              padding: "2rem",
+              background: "rgba(0,0,0,.7)",
+            }}
+          >
+            {[t.bio1, t.bio2, t.bio3, t.bio4].map((text, i, arr) => (
+              <p
+                key={i}
+                style={{
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: ".82rem",
+                  letterSpacing: ".12em",
+                  lineHeight: 1.95,
+                  color: "rgba(255,255,255,.82)",
+                  marginBottom: i < arr.length - 1 ? "1.1rem" : 0,
+                  textAlign: "left",
+                }}
+              >
+                {text}
+              </p>
+            ))}
+          </div>
+
+          <button
+            className="btn-glow"
+            onClick={() => onNavigate("/")}
+            style={{
+              marginTop: "32px",
+              padding: "10px 28px",
+              background: "rgba(0,0,0,.55)",
+              border: "1px solid rgba(255,255,255,.35)",
+              color: "#fff",
+              fontFamily: "'UnifrakturMaguntia', serif",
+              letterSpacing: ".2em",
+              cursor: "pointer",
+              fontSize: "1rem",
+            }}
+          >
+            {t.backBtn}
+          </button>
+        </div>
+      </div>
+    </PageShell>
+  );
+}
+
+function AppRoutes({ lang }: { lang: Lang }) {
+  const [location, setLocation] = useLocation();
+  const [displayedPath, setDisplayedPath] = useState(location);
+  const [exiting, setExiting] = useState(false);
+  const pendingRef = useRef<string | null>(null);
+
+  const navigate = useCallback((path: string) => {
+    if (path === displayedPath) return;
+    pendingRef.current = path;
+    setExiting(true);
+    setTimeout(() => {
+      setDisplayedPath(path);
+      setLocation(path);
+      setExiting(false);
+      pendingRef.current = null;
+    }, 350);
+  }, [displayedPath, setLocation]);
+
+  return (
+    <div
+      className={exiting ? "page-exit" : "page-enter"}
+      key={displayedPath}
+      style={{ height: "100%" }}
+    >
+      {displayedPath === "/" || displayedPath === "" ? (
+        <HomePage lang={lang} onNavigate={navigate} />
+      ) : (
+        <AboutPage lang={lang} onNavigate={navigate} />
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const [introPlayed, setIntroPlayed] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [lang, setLang] = useState<Lang>("en");
+  const { playInsertSound, startHiss } = useVHSAudio();
+
+  const toggleLang = useCallback(() => {
+    setLang((l) => (l === "en" ? "ru" : "en"));
+  }, []);
+
+  const handleStart = useCallback(() => {
+    setStarted(true);
+    playInsertSound();
+    setTimeout(() => startHiss(), 400);
+  }, [playInsertSound, startHiss]);
+
+  const handleIntroDone = useCallback(() => {
+    setIntroPlayed(true);
+    startHiss();
+  }, [startHiss]);
+
+  if (!started) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          zIndex: 999,
+        }}
+        onClick={handleStart}
+        data-testid="button-start"
+      >
+        <VHSCanvas opacity={0.35} dense={false} zIndex={5} />
+        <div
+          style={{
+            position: "relative",
+            zIndex: 10,
+            textAlign: "center",
+            color: "rgba(255,255,255,0.5)",
+            fontFamily: "'Cinzel', serif",
+            fontSize: "0.75rem",
+            letterSpacing: ".5em",
+            animation: "fadeIn 1.5s ease forwards",
+          }}
+        >
+          {translations[lang].clickToEnter}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!introPlayed && <VHSIntro onDone={handleIntroDone} lang={lang} />}
+      <div
+        style={{
+          opacity: introPlayed ? 1 : 0,
+          transition: "opacity 0.6s ease",
+          height: "100%",
+        }}
+      >
+        <Logo />
+        <PlayBlinker />
+        <TranslateButton lang={lang} onToggle={toggleLang} />
+        <WouterRouter base={BASE}>
+          <AppRoutes lang={lang} />
+        </WouterRouter>
+      </div>
+    </>
+  );
+}
+
+export default App;
